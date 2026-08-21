@@ -5,5 +5,7 @@ motor
 python-dotenv
 passlib[bcrypt]
 bcrypt==4.0.1
+pwdlib[argon2]
+pwdlib[bcrypt]
 python-jose[cryptography]
 pyjwt
