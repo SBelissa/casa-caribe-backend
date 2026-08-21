@@ -1,5 +1,6 @@
 fastapi
 uvicorn
+gunicorn
 motor
 python-dotenv
 pwdlib[bcrypt]
