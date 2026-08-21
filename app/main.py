@@ -10,6 +10,14 @@ from passlib.context import CryptContext
 from jose import jwt, JWTError
 from motor.motor_asyncio import AsyncIOMotorClient
 from bson import ObjectId
+from pwdlib import PasswordHash
+from pwdlib.hashers.bcrypt import BcryptHasher
+
+
+from dotenv import load_dotenv
+# Cargar variables desde el archivo .env
+load_dotenv()
+
 
 # Configuración
 MONGO_URI = os.getenv("MONGO_URI", "")
@@ -55,11 +63,15 @@ class DecisionReserva(BaseModel):
     estado: str  # "confirmada" o "cancelada"
 
 # Funciones de Autenticación
-def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
 
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
+# Forzar el uso de Bcrypt en lugar de Argon2
+password_hash = PasswordHash((BcryptHasher(),))
+
+def hash_password(password: str):
+    return password_hash.hash(password)
+
+def verify_password(plain_password: str, hashed_password: str):
+    return password_hash.verify(plain_password, hashed_password)
 
 def create_access_token(data: dict) -> str:
     to_encode = data.copy()

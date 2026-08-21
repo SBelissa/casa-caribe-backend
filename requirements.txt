@@ -1,8 +1,6 @@
 fastapi
 uvicorn
 motor
-pydantic[email]
-passlib[bcrypt]
-python-jose[cryptography]
 python-dotenv
-gunicorn
+pwdlib[bcrypt]
+pyjwt
