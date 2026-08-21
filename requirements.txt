@@ -3,9 +3,9 @@ uvicorn
 gunicorn
 motor
 python-dotenv
-passlib[bcrypt]
+pwdlib
+argon2-cffi
 bcrypt==4.0.1
-pwdlib[argon2]
-pwdlib[bcrypt]
+passlib[bcrypt]
 python-jose[cryptography]
 pyjwt
