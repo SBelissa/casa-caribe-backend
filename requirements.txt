@@ -3,5 +3,6 @@ uvicorn
 gunicorn
 motor
 python-dotenv
-pwdlib[bcrypt]
+passlib[bcrypt]
+bcrypt==4.0.1
 pyjwt
