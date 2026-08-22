@@ -12,12 +12,19 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from bson import ObjectId
 from pwdlib import PasswordHash
 from pwdlib.hashers.bcrypt import BcryptHasher
-
+from fastapi.middleware.cors import CORSMiddleware
 
 from dotenv import load_dotenv
 # Cargar variables desde el archivo .env
 load_dotenv()
 
+# Lista de orígenes permitidos
+origins = [
+    "https://comforting-gumption-884495.netlify.app",  # Netlify
+    "http://localhost:5173",                            # React / Vite local
+    "http://127.0.0.1:5173",
+    "http://localhost:3000",
+]
 
 # Configuración
 MONGO_URI = os.getenv("MONGO_URI", "")
@@ -35,7 +42,7 @@ app = FastAPI(title="Casa Caribe API", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
