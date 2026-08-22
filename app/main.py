@@ -94,7 +94,8 @@ def enviar_correo_confirmacion(email_destinatario: str, nombre_cliente: str, fec
         msg.attach(MIMEText(cuerpo_html, 'html'))
 
         # Conexión por puerto 587 con STARTTLS (Compatible con Render)
-        with smtplib.SMTP('smtp.gmail.com', 587) as server:
+        # Conexión SMTP con timeout de 10 segundos
+        with smtplib.SMTP('smtp.gmail.com', 587, timeout=10) as server:
             server.ehlo()
             server.starttls()
             server.login(user, password)
