@@ -1,8 +1,11 @@
 import os
+import smtplib
 from datetime import datetime, timedelta
 from typing import Optional, List
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer
 from pydantic import BaseModel, EmailStr, Field
@@ -12,13 +15,12 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from bson import ObjectId
 from pwdlib import PasswordHash
 from pwdlib.hashers.bcrypt import BcryptHasher
-from fastapi.middleware.cors import CORSMiddleware
-
 from dotenv import load_dotenv
+
 # Cargar variables desde el archivo .env
 load_dotenv()
 
-# Lista de orígenes permitidos
+# Lista de orígenes permitidos para CORS
 origins = [
     "https://comforting-gumption-884495.netlify.app",  # Netlify
     "http://localhost:5173",                            # React / Vite local
@@ -26,11 +28,15 @@ origins = [
     "http://localhost:3000",
 ]
 
-# Configuración
+# Configuración del Sistema
 MONGO_URI = os.getenv("MONGO_URI", "")
 SECRET_KEY = os.getenv("SECRET_KEY", "secret_default")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 1440
+
+# Variables para envío de Correos
+GMAIL_USER = os.getenv("GMAIL_USER", "")  # Ej: tu_correo@gmail.com
+GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD", "")  # Tu App Password de 16 dígitos
 
 client = AsyncIOMotorClient(MONGO_URI)
 db = client.casa_caribe
@@ -47,6 +53,48 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# --- FUNCIÓN PARA ENVIAR CORREOS REALES ---
+def enviar_correo_confirmacion(email_destinatario: str, nombre_cliente: str, fecha: str, hora: str, personas: int):
+    if not GMAIL_USER or not GMAIL_APP_PASSWORD:
+        print("⚠️ GMAIL_USER o GMAIL_APP_PASSWORD no están configurados en el .env / Render. Correo omitido.")
+        return
+
+    try:
+        msg = MIMEMultipart()
+        msg['From'] = f"Casa Caribe <{GMAIL_USER}>"
+        msg['To'] = email_destinatario
+        msg['Subject'] = "¡Tu mesa en Casa Caribe ha sido confirmada! 🌊"
+
+        cuerpo_html = f"""
+        <html>
+            <body style="font-family: Arial, sans-serif; color: #20261F; background-color: #FBF3E6; padding: 20px;">
+                <div style="max-width: 500px; margin: 0 auto; background: white; padding: 25px; border-radius: 12px; border: 1px solid #0B3D3A;">
+                    <h2 style="color: #082B29; margin-top: 0;">¡Hola {nombre_cliente}!</h2>
+                    <p>Nos alegra informarte que tu solicitud de reserva en <strong>Casa Caribe</strong> ha sido <strong>confirmada</strong>.</p>
+                    
+                    <div style="background-color: #C7E3D4; padding: 15px; border-radius: 8px; margin: 20px 0; color: #082B29;">
+                        <p style="margin: 5px 0;"><strong>Personas:</strong> {personas}</p>
+                        <p style="margin: 5px 0;"><strong>Fecha:</strong> {fecha}</p>
+                        <p style="margin: 5px 0;"><strong>Hora:</strong> {hora}</p>
+                    </div>
+
+                    <p style="font-size: 13px; color: #666;">Si llegas más de 15 minutos tarde o necesitas cancelar, por favor responde a este correo.</p>
+                    <p style="margin-top: 20px; font-weight: bold; color: #E8613D;">¡Nos vemos pronto!</p>
+                </div>
+            </body>
+        </html>
+        """
+        msg.attach(MIMEText(cuerpo_html, 'html'))
+
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
+            server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
+            server.send_message(msg)
+            
+        print(f"✅ Correo enviado exitosamente a: {email_destinatario}")
+    except Exception as e:
+        print(f"❌ Error enviando correo: {e}")
+
 
 # Esquemas de Entrada
 class UsuarioRegistro(BaseModel):
@@ -70,8 +118,6 @@ class DecisionReserva(BaseModel):
     estado: str  # "confirmada" o "cancelada"
 
 # Funciones de Autenticación
-
-# Forzar el uso de Bcrypt en lugar de Argon2
 password_hash = PasswordHash((BcryptHasher(),))
 
 def hash_password(password: str):
@@ -200,11 +246,36 @@ async def listar_todas_reservas(current_user: dict = Depends(get_current_admin))
     return reservas
 
 @app.put("/api/admin/reservas/{reserva_id}/decidir")
-async def decidir_reserva(reserva_id: str, decision: DecisionReserva, current_user: dict = Depends(get_current_admin)):
-    resultado = await db.reservas.update_one(
+async def decidir_reserva(
+    reserva_id: str, 
+    decision: DecisionReserva, 
+    background_tasks: BackgroundTasks, 
+    current_user: dict = Depends(get_current_admin)
+):
+    # 1. Buscar la reserva actual
+    reserva = await db.reservas.find_one({"_id": ObjectId(reserva_id)})
+    if not reserva:
+        raise HTTPException(status_code=404, detail="Reserva no encontrada")
+
+    # 2. Actualizar el estado en MongoDB
+    await db.reservas.update_one(
         {"_id": ObjectId(reserva_id)},
         {"$set": {"estado": decision.estado}}
     )
-    if resultado.modified_count == 0:
-        raise HTTPException(status_code=404, detail="Reserva no encontrada")
+
+    # 3. Si la decisión es 'confirmada', enviar el correo en segundo plano
+    if decision.estado == "confirmada":
+        correo_destinatario = reserva.get("cliente", {}).get("correo")
+        nombre_cliente = reserva.get("cliente", {}).get("nombre", "Cliente")
+        
+        if correo_destinatario:
+            background_tasks.add_task(
+                enviar_correo_confirmacion,
+                email_destinatario=correo_destinatario,
+                nombre_cliente=nombre_cliente,
+                fecha=reserva.get("fecha", ""),
+                hora=reserva.get("hora", ""),
+                personas=reserva.get("cantidad_personas", 1)
+            )
+
     return {"mensaje": f"Reserva actualizada a {decision.estado}"}
