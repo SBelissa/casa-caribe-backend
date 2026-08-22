@@ -110,6 +110,14 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
         "rol": usuario.get("rol", "Cliente")
     }
 
+async def get_current_admin(current_user: dict = Depends(get_current_user)):
+    if current_user.get("rol", "").lower() != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permisos de administrador."
+        )
+    return current_user
+
 # Rutas de Autenticación
 @app.post("/api/auth/registro", status_code=201)
 async def registrar(usuario: UsuarioRegistro):
@@ -141,7 +149,8 @@ async def login(credenciales: UsuarioLogin):
         "usuario": {
             "id": str(usuario["_id"]),
             "name": usuario["nombre_completo"],
-            "email": usuario["correo"]
+            "email": usuario["correo"],
+            "rol": usuario.get("rol", "Cliente")
         }
     }
 
@@ -179,7 +188,7 @@ async def mis_reservas(current_user: dict = Depends(get_current_user)):
     return reservas
 
 @app.get("/api/admin/reservas")
-async def listar_todas_reservas(current_user: dict = Depends(get_current_user)):
+async def listar_todas_reservas(current_user: dict = Depends(get_current_admin)):
     cursor = db.reservas.find()
     reservas = []
     async for r in cursor:
@@ -191,7 +200,7 @@ async def listar_todas_reservas(current_user: dict = Depends(get_current_user)):
     return reservas
 
 @app.put("/api/admin/reservas/{reserva_id}/decidir")
-async def decidir_reserva(reserva_id: str, decision: DecisionReserva, current_user: dict = Depends(get_current_user)):
+async def decidir_reserva(reserva_id: str, decision: DecisionReserva, current_user: dict = Depends(get_current_admin)):
     resultado = await db.reservas.update_one(
         {"_id": ObjectId(reserva_id)},
         {"$set": {"estado": decision.estado}}
