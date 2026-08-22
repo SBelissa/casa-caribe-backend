@@ -56,13 +56,19 @@ app.add_middleware(
 
 # --- FUNCIÓN PARA ENVIAR CORREOS REALES ---
 def enviar_correo_confirmacion(email_destinatario: str, nombre_cliente: str, fecha: str, hora: str, personas: int):
-    if not GMAIL_USER or not GMAIL_APP_PASSWORD:
-        print("⚠️ GMAIL_USER o GMAIL_APP_PASSWORD no están configurados en el .env / Render. Correo omitido.")
+    # Limpiar espacios si la contraseña de aplicación se pegó con espacios de la página de Google
+    user = GMAIL_USER.strip() if GMAIL_USER else ""
+    password = GMAIL_APP_PASSWORD.replace(" ", "") if GMAIL_APP_PASSWORD else ""
+
+    print(f"📧 Intentando enviar correo a: {email_destinatario} usando {user}...")
+
+    if not user or not password:
+        print("⚠️ ABORTADO: GMAIL_USER o GMAIL_APP_PASSWORD no están configurados en Render.")
         return
 
     try:
         msg = MIMEMultipart()
-        msg['From'] = f"Casa Caribe <{GMAIL_USER}>"
+        msg['From'] = f"Casa Caribe <{user}>"
         msg['To'] = email_destinatario
         msg['Subject'] = "¡Tu mesa en Casa Caribe ha sido confirmada! 🌊"
 
@@ -87,14 +93,17 @@ def enviar_correo_confirmacion(email_destinatario: str, nombre_cliente: str, fec
         """
         msg.attach(MIMEText(cuerpo_html, 'html'))
 
-        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
-            server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
+        # Conexión por puerto 587 con STARTTLS (Compatible con Render)
+        with smtplib.SMTP('smtp.gmail.com', 587) as server:
+            server.ehlo()
+            server.starttls()
+            server.login(user, password)
             server.send_message(msg)
             
-        print(f"✅ Correo enviado exitosamente a: {email_destinatario}")
-    except Exception as e:
-        print(f"❌ Error enviando correo: {e}")
+        print(f"✅ ¡Correo enviado exitosamente a: {email_destinatario}!")
 
+    except Exception as e:
+        print(f"❌ Error al enviar correo SMTP: {str(e)}")
 
 # Esquemas de Entrada
 class UsuarioRegistro(BaseModel):
